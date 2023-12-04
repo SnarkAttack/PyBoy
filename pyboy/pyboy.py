@@ -417,7 +417,7 @@ class PyBoy:
             value = self.get_memory_value(address + i)
             if value == 80:
                 break
-            text += chr(value - 64)
+            text += chr(value - 63)
         return text
     
 
