@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import PIL
 import pytest
+
 from pyboy import PyBoy
 
 if platform.python_implementation() == "PyPy":
@@ -115,7 +116,8 @@ def test_samesuite(clean, gb_type, rom, samesuite_dir, boot_cgb_rom, boot_rom, d
             default_rom,
             window_type="headless",
             cgb=gb_type == "cgb",
-            bootrom=boot_cgb_rom if gb_type == "cgb" else boot_rom
+            bootrom=boot_cgb_rom if gb_type == "cgb" else boot_rom,
+            sound_emulated=True,
         )
         pyboy.set_emulation_speed(0)
         saved_state = io.BytesIO()
@@ -128,7 +130,8 @@ def test_samesuite(clean, gb_type, rom, samesuite_dir, boot_cgb_rom, boot_rom, d
         samesuite_dir + rom,
         window_type="headless",
         cgb=gb_type == "cgb",
-        bootrom=boot_cgb_rom if gb_type == "cgb" else boot_rom
+        bootrom=boot_cgb_rom if gb_type == "cgb" else boot_rom,
+        sound_emulated=True,
     )
     pyboy.set_emulation_speed(0)
     saved_state.seek(0)
@@ -145,7 +148,7 @@ def test_samesuite(clean, gb_type, rom, samesuite_dir, boot_cgb_rom, boot_rom, d
         else:
             break
 
-    png_path = Path(f"test_results/SameSuite/{rom}.png")
+    png_path = Path(f"tests/test_results/SameSuite/{rom}.png")
     image = pyboy.botsupport_manager().screen().screen_image()
     if OVERWRITE_PNGS:
         png_path.parents[0].mkdir(parents=True, exist_ok=True)

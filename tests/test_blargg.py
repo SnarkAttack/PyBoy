@@ -12,15 +12,16 @@ import time
 from pathlib import Path
 
 import pytest
+
 from pyboy import PyBoy
 
 OVERWRITE_JSON = False
 
-blargg_json = "test_results/blargg.json"
+blargg_json = "tests/test_results/blargg.json"
 
 
 def run_rom(rom):
-    pyboy = PyBoy(str(rom), window_type="dummy", cgb="cgb" in rom)
+    pyboy = PyBoy(str(rom), window_type="dummy", cgb="cgb" in rom, sound_emulated=True)
     pyboy.set_emulation_speed(0)
     t = time.time()
     result = ""

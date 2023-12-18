@@ -7,10 +7,13 @@
 import argparse
 import os
 
-from pyboy import PyBoy, core
-from pyboy.logger import log_level, logger
-from pyboy.plugin_manager import external_plugin_names, parser_arguments, window_names
+import pyboy
+from pyboy import PyBoy, core, utils
+from pyboy.logging import log_level
+from pyboy.plugins.manager import external_plugin_names, parser_arguments, window_names
 from pyboy.pyboy import defaults
+
+logger = pyboy.logging.get_logger(__name__)
 
 INTERNAL_LOADSTATE = "INTERNAL_LOADSTATE_TOKEN"
 
@@ -21,9 +24,15 @@ def color_tuple(string):
     return color_palette
 
 
+def cgb_color_tuple(string):
+    color_palette = [int(c.strip(), 16) for c in string.split(",")]
+    assert len(color_palette) == 12, f"Not the correct amount of colors! Expected twelve, got {len(color_palette)}"
+    return [color_palette[0:4], color_palette[4:8], color_palette[8:12]]
+
+
 def valid_file_path(path):
     if not path == INTERNAL_LOADSTATE and not os.path.isfile(path):
-        logger.error(f"Filepath '{path}' couldn't be found, or isn't a file!")
+        logger.error("Filepath '%s' couldn't be found, or isn't a file!", path)
         exit(1)
     return path
 
@@ -36,7 +45,6 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("ROM", type=valid_file_path, help="Path to a Game Boy compatible ROM file")
 parser.add_argument("-b", "--bootrom", type=valid_file_path, help="Path to a boot-ROM file")
-parser.add_argument("--profiling", action="store_true", help="Enable opcode profiling (internal use)")
 parser.add_argument("--randomize-ram", action="store_true", help="Randomize Game Boy RAM on startup")
 parser.add_argument(
     "--log-level",
@@ -50,6 +58,14 @@ parser.add_argument(
     type=color_tuple,
     default=defaults["color_palette"],
     help=('Four comma seperated, hexadecimal, RGB values for colors (i.e. "FFFFFF,999999,555555,000000")')
+)
+parser.add_argument(
+    "--cgb-color-palette",
+    type=cgb_color_tuple,
+    default=defaults["cgb_color_palette"],
+    help=(
+        'Three sets of four comma seperated, hexadecimal, RGB values for colors in the order of: background, obj0, obj1 (i.e. "FFFFFF,7BFF31,0063C5,000000,FFFFFF,FF8484,FF8484,000000,FFFFFF,FF8484,FF8484,000000")'
+    )
 )
 parser.add_argument(
     "-l",
@@ -95,7 +111,7 @@ def main():
     argv = parser.parse_args()
     log_level(argv.log_level)
 
-    logger.info(
+    print(
         """
 The Game Boy controls are as follows:
 
@@ -152,17 +168,6 @@ See "pyboy --help" for how to enable rewind and other awesome features!
         pass
 
     pyboy.stop()
-
-    if argv.profiling:
-        print("\n".join(profiling_printer(pyboy._cpu_hitrate())))
-
-
-def profiling_printer(hitrate):
-    print("Profiling report:")
-    from operator import itemgetter
-    names = [core.opcodes.CPU_COMMANDS[n] for n in range(0x200)]
-    for hits, opcode, name in sorted(filter(itemgetter(0), zip(hitrate, range(0x200), names)), reverse=True):
-        yield ("%3x %16s %s" % (opcode, name, hits))
 
 
 if __name__ == "__main__":

@@ -238,7 +238,7 @@ def rtc3test_file():
 
 @pytest.fixture(scope="session")
 def git_tetris_ai():
-    if os.path.isfile("README/7.gif") or platform.system() == "Windows":
+    if os.path.isfile("extras/README/7.gif") or platform.system() == "Windows":
         return None
 
     import venv
@@ -261,7 +261,7 @@ def git_tetris_ai():
 
 @pytest.fixture(scope="session")
 def git_pyboy_rl():
-    if os.path.isfile("README/6.gif") or platform.system() == "Windows":
+    if os.path.isfile("extras/README/6.gif") or platform.system() == "Windows":
         return None
 
     import venv
@@ -282,12 +282,11 @@ def git_pyboy_rl():
 
 @pytest.fixture(scope="session")
 def secrets():
-    if not os.environ.get("PYTEST_SECRETS_KEY"):
-        pytest.skip("Cannot access secrets")
-
     path = extra_test_rom_dir / Path("secrets")
     with FileLock(path.with_suffix(".lock")) as lock:
-        if not os.path.isfile(path):
+        if not os.path.isdir(path):
+            if not os.environ.get("PYTEST_SECRETS_KEY"):
+                pytest.skip("Cannot access secrets")
             fernet = Fernet(os.environ["PYTEST_SECRETS_KEY"].encode())
 
             test_data = url_open("https://pyboy.dk/mirror/test_data.encrypted")

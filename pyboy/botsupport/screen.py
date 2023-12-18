@@ -6,13 +6,14 @@
 This class gives access to the frame buffer and other screen parameters of PyBoy.
 """
 
-import logging
-
 import numpy as np
+
+from pyboy import utils
+from pyboy.logging import get_logger
 
 from .constants import COLS, ROWS
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:
     from PIL import Image
@@ -39,7 +40,7 @@ class Screen:
         to the right or bottom edge than 160x144 pixels, the screen will wrap around and render from the opposite site
         of the tile map.
 
-        For more details, see "7.4 Viewport" in the [report](https://github.com/Baekalfen/PyBoy/raw/master/PyBoy.pdf),
+        For more details, see "7.4 Viewport" in the [report](https://github.com/Baekalfen/PyBoy/raw/master/extras/PyBoy.pdf),
         or the Pan Docs under [LCD Position and Scrolling](http://bgb.bircd.org/pandocs.htm#lcdpositionandscrolling).
 
         Returns
@@ -113,8 +114,7 @@ class Screen:
         numpy.ndarray:
             Screendata in `ndarray` of bytes with shape (160, 144, 3)
         """
-        return np.frombuffer(self.raw_screen_buffer(), dtype=np.uint8).reshape(ROWS, COLS, 4)[:, :, 1:]
-        # return self.mb.lcd.renderer.screen_buffer_as_ndarray()
+        return np.frombuffer(self.mb.lcd.renderer._screenbuffer_raw, dtype=np.uint8).reshape(ROWS, COLS, 4)[:, :, 1:]
 
     def screen_image(self):
         """

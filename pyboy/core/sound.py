@@ -10,35 +10,52 @@
 from array import array
 from ctypes import c_void_p
 
+from pyboy import utils
+
 try:
     import sdl2
 except ImportError:
     sdl2 = None
+
+import pyboy
+
+logger = pyboy.logging.get_logger(__name__)
 
 SOUND_DESYNC_THRESHOLD = 5
 CPU_FREQ = 4213440 # hz
 
 
 class Sound:
-    def __init__(self, enabled):
+    def __init__(self, enabled, emulate):
         self.enabled = enabled and (sdl2 is not None)
+        self.emulate = emulate or enabled # Just emulate registers etc.
         if self.enabled:
             # Initialization is handled in the windows, otherwise we'd need this
-            sdl2.SDL_Init(sdl2.SDL_INIT_AUDIO)
+            if sdl2.SDL_Init(sdl2.SDL_INIT_AUDIO) >= 0:
+                # Open audio device
+                spec_want = sdl2.SDL_AudioSpec(32768, sdl2.AUDIO_S8, 2, 64)
+                spec_have = sdl2.SDL_AudioSpec(0, 0, 0, 0)
+                self.device = sdl2.SDL_OpenAudioDevice(None, 0, spec_want, spec_have, 0)
 
-            # Open audio device
-            spec_want = sdl2.SDL_AudioSpec(32768, sdl2.AUDIO_S8, 2, 64)
-            spec_have = sdl2.SDL_AudioSpec(0, 0, 0, 0)
-            self.device = sdl2.SDL_OpenAudioDevice(None, 0, spec_want, spec_have, 0)
+                if self.device > 1:
+                    # Start playback (move out of __init__ if needed, maybe for headless)
+                    sdl2.SDL_PauseAudioDevice(self.device, 0)
 
-            # Start playback (move out of __init__ if needed, maybe for headless)
-            sdl2.SDL_PauseAudioDevice(self.device, 0)
+                    self.sample_rate = spec_have.freq
+                    self.sampleclocks = CPU_FREQ // self.sample_rate
+                else:
+                    # TODO: Refactor SDL2 out of sound.py
+                    logger.error("SDL_OpenAudioDevice failed: %s", sdl2.SDL_GetError().decode())
+                    self.enabled = False # We will continue with emulation
+            else:
+                # TODO: Refactor SDL2 out of sound.py
+                logger.error("SDL_Init audio failed: %s", sdl2.SDL_GetError().decode())
+                self.enabled = False # We will continue with emulation
 
-            self.sample_rate = spec_have.freq
-            self.sampleclocks = CPU_FREQ // self.sample_rate
-        else:
+        if not self.enabled:
             self.sample_rate = 32768
             self.sampleclocks = CPU_FREQ // self.sample_rate
+
         self.audiobuffer = array("b", [0] * 4096) # Over 2 frames
         self.audiobuffer_p = c_void_p(self.audiobuffer.buffer_info()[0])
 
@@ -61,6 +78,8 @@ class Sound:
         self.rightsweep = False
 
     def get(self, offset):
+        if not self.emulate:
+            return 0
         self.sync()
         if offset < 20:
             i = offset // 5
@@ -91,6 +110,8 @@ class Sound:
             raise IndexError(f"Attempted to read register {offset} in sound memory")
 
     def set(self, offset, value):
+        if not self.emulate:
+            return
         self.sync()
         if offset < 20 and self.poweron:
             i = offset // 5
@@ -131,6 +152,9 @@ class Sound:
 
     def sync(self):
         """Run the audio for the number of clock cycles stored in self.clock"""
+        if not self.emulate:
+            return
+
         nsamples = self.clock // self.sampleclocks
 
         for i in range(min(2048, nsamples)):
@@ -155,14 +179,17 @@ class Sound:
                 self.audiobuffer[2*i + 1] = 0
 
         if self.enabled:
-            # Clear queue, if we are behind
-            queued_time = sdl2.SDL_GetQueuedAudioSize(self.device)
-            samples_per_frame = (self.sample_rate / 60) * 2 # Data of 1 frame's worth (60) in stereo (2)
-            if queued_time > samples_per_frame * SOUND_DESYNC_THRESHOLD:
-                sdl2.SDL_ClearQueuedAudio(self.device)
-
-            sdl2.SDL_QueueAudio(self.device, self.audiobuffer_p, 2 * nsamples)
+            self.enqueue_sound(nsamples)
         self.clock %= self.sampleclocks
+
+    def enqueue_sound(self, nsamples):
+        # Clear queue, if we are behind
+        queued_time = sdl2.SDL_GetQueuedAudioSize(self.device)
+        samples_per_frame = (self.sample_rate / 60) * 2 # Data of 1 frame's worth (60) in stereo (2)
+        if queued_time > samples_per_frame * SOUND_DESYNC_THRESHOLD:
+            sdl2.SDL_ClearQueuedAudio(self.device)
+
+        sdl2.SDL_QueueAudio(self.device, self.audiobuffer_p, 2 * nsamples)
 
     def stop(self):
         if self.enabled:

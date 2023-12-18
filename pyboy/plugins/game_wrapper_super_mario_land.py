@@ -7,20 +7,14 @@ __pdoc__ = {
     "GameWrapperSuperMarioLand.post_tick": False,
 }
 
-import logging
-
 import numpy as np
+
+import pyboy
 from pyboy.utils import WindowEvent
 
 from .base_plugin import PyBoyGameWrapper
 
-logger = logging.getLogger(__name__)
-
-try:
-    from cython import compiled
-    cythonmode = compiled
-except ImportError:
-    cythonmode = False
+logger = pyboy.logging.get_logger(__name__)
 
 # Mario and Daisy
 base_scripts = list(range(81))
@@ -182,15 +176,15 @@ class GameWrapperSuperMarioLand(PyBoyGameWrapper):
             self.pyboy.set_memory_value(ADDR_LIVES_LEFT_DISPLAY, tens)
             self.pyboy.set_memory_value(ADDR_LIVES_LEFT_DISPLAY + 1, ones)
         else:
-            logger.error(f"{amount} is out of bounds. Only values between 0 and 99 allowed.")
+            logger.error("%d is out of bounds. Only values between 0 and 99 allowed.", amount)
 
     def set_world_level(self, world, level):
         """
         Patches the handler for pressing start in the menu. It hardcodes a world and level to always "continue" from.
 
         Args:
-            world (int): The wanted number of lives
-            level (int): The wanted number of lives
+            world (int): The world to select a level from, 0-3
+            level (int): The level to start from, 0-2
         """
 
         for i in range(0x450, 0x461):

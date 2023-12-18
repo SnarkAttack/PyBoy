@@ -3,29 +3,25 @@
 # GitHub: https://github.com/Baekalfen/PyBoy
 #
 
-import logging
-
 import numpy as np
-from pyboy.logger import logger
+
+import pyboy
+from pyboy import utils
 from pyboy.plugins.base_plugin import PyBoyWindowPlugin
 from pyboy.utils import WindowEvent
 
-logger = logging.getLogger(__name__)
+logger = pyboy.logging.get_logger(__name__)
 
 try:
     import OpenGL.GLUT.freeglut
-    from OpenGL.GL import (
-        GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, glClear, glDrawPixels, glFlush,
-        glPixelZoom
-    )
-    # from OpenGL.GLU import *
-    from OpenGL.GLUT import (
-        GLUT_KEY_DOWN, GLUT_KEY_LEFT, GLUT_KEY_RIGHT, GLUT_KEY_UP, GLUT_RGBA, GLUT_SINGLE, glutCreateWindow,
-        glutDestroyWindow, glutDisplayFunc, glutGetWindow, glutInit, glutInitDisplayMode, glutInitWindowSize,
-        glutKeyboardFunc, glutKeyboardUpFunc, glutReshapeFunc, glutSetWindowTitle, glutSpecialFunc, glutSpecialUpFunc
-    )
+    from OpenGL.GL import (GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, glClear,
+                           glDrawPixels, glFlush, glPixelZoom)
+    from OpenGL.GLUT import (GLUT_KEY_DOWN, GLUT_KEY_LEFT, GLUT_KEY_RIGHT, GLUT_KEY_UP, GLUT_RGBA, GLUT_SINGLE,
+                             glutCreateWindow, glutDestroyWindow, glutDisplayFunc, glutGetWindow, glutInit,
+                             glutInitDisplayMode, glutInitWindowSize, glutKeyboardFunc, glutKeyboardUpFunc,
+                             glutReshapeFunc, glutSetWindowTitle, glutSpecialFunc, glutSpecialUpFunc)
     opengl_enabled = True
-except ImportError:
+except (ImportError, AttributeError):
     opengl_enabled = False
 
 ROWS, COLS = 144, 160
@@ -144,7 +140,10 @@ class WindowOpenGL(PyBoyWindowPlugin):
     def enabled(cls, pyboy, pyboy_argv):
         if pyboy_argv.get("window_type") == "OpenGL":
             if opengl_enabled:
-                return True
+                if bool(OpenGL.GLUT.freeglut.glutMainLoopEvent):
+                    return True
+                else:
+                    logger.error("Failed to load \"PyOpenGL\". OpenGL window disabled")
             else:
                 logger.error("Missing depencency \"PyOpenGL\". OpenGL window disabled")
         return False

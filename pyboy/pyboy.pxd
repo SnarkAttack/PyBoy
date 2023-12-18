@@ -4,15 +4,19 @@
 #
 
 
-from libc cimport time
 cimport cython
-from libc.stdint cimport uint64_t
+from libc cimport time
+from libc.stdint cimport int64_t, uint64_t
+
 from pyboy.core.mb cimport Motherboard
-from pyboy.utils cimport IntIOWrapper, IntIOInterface
-from pyboy.plugin_manager cimport PluginManager
+from pyboy.logging.logging cimport Logger
+from pyboy.plugins.manager cimport PluginManager
+from pyboy.utils cimport IntIOInterface, IntIOWrapper
 
 
-cdef float SPF
+cdef Logger logger
+
+cdef double SPF
 
 cdef class PyBoy:
     cdef Motherboard mb
@@ -41,12 +45,13 @@ cdef class PyBoy:
     cdef list recorded_input
     cdef list external_input
 
-    @cython.locals(t_start=float, t_pre=float, t_tick=float, t_post=float, secs=float)
-    cpdef bint tick(self)
-    cpdef void stop(self, save=*)
+    @cython.locals(t_start=int64_t, t_pre=int64_t, t_tick=int64_t, t_post=int64_t, nsecs=int64_t)
+    cpdef bint tick(self) noexcept
+    cpdef void stop(self, save=*) noexcept
 
-    cdef void _handle_events(self, list)
-    cpdef void _pause(self)
-    cpdef void _unpause(self)
-    cdef void _update_window_title(self)
-    cdef void _post_tick(self)
+    @cython.locals(state_path=str)
+    cdef void _handle_events(self, list) noexcept
+    cpdef void _pause(self) noexcept
+    cpdef void _unpause(self) noexcept
+    cdef void _update_window_title(self) noexcept
+    cdef void _post_tick(self) noexcept

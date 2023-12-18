@@ -3,11 +3,11 @@
 # GitHub: https://github.com/Baekalfen/PyBoy
 #
 
-import logging
-
+import pyboy
+from pyboy import utils
 from pyboy.plugins.base_plugin import PyBoyWindowPlugin
 
-logger = logging.getLogger(__name__)
+logger = pyboy.logging.get_logger(__name__)
 
 
 class WindowDummy(PyBoyWindowPlugin):
@@ -17,13 +17,10 @@ class WindowDummy(PyBoyWindowPlugin):
         super().__init__(pyboy, mb, pyboy_argv)
 
         pyboy._rendering(False)
-        logger.warning(
-            'This window type does not support frame-limiting. `pyboy.set_emulation_speed(...)` will have no effect, as it\'s always running at full speed.'
-        )
 
     @classmethod
     def enabled(cls, pyboy, pyboy_argv):
         return pyboy_argv.get("window_type") == "dummy"
 
     def set_title(self, title):
-        logger.info(title)
+        logger.debug(title)

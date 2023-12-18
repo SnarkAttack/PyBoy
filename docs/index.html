@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.10.0" />
 <title>pyboy API documentation</title>
 <meta name="description" content="" />
 <link href='https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.0/normalize.min.css' rel='stylesheet'>
@@ -68,7 +68,7 @@ from .utils import WindowEvent</code></pre>
 <dl>
 <dt id="pyboy.PyBoy"><code class="flex name class">
 <span>class <span class="ident">PyBoy</span></span>
-<span>(</span><span>gamerom_file, *, bootrom_file=None, profiling=False, disable_renderer=False, sound=False, cgb=None, randomize=False, **kwargs)</span>
+<span>(</span><span>gamerom_file, *, bootrom_file=None, disable_renderer=False, sound=False, sound_emulated=False, cgb=None, randomize=False, **kwargs)</span>
 </code></dt>
 <dd>
 <section class="desc"><p>PyBoy is loadable as an object in Python. This means, it can be initialized from another script, and be
@@ -77,8 +77,8 @@ multiple times.</p>
 <p>This object, <code><a title="pyboy.WindowEvent" href="#pyboy.WindowEvent">WindowEvent</a></code>, and the <code><a title="pyboy.botsupport" href="botsupport/index.html">pyboy.botsupport</a></code> module, are the only official user-facing
 interfaces. All other parts of the emulator, are subject to change.</p>
 <p>A range of methods are exposed, which should allow for complete control of the emulator. Please open an issue on
-GitHub, if other methods are needed for your projects. Take a look at <code>interface_example.py</code> or <code>tetris_bot.py</code>
-for a crude "bot", which interacts with the game.</p>
+GitHub, if other methods are needed for your projects. Take a look at the files in <code>examples/</code> for a crude
+"bots", which interact with the game.</p>
 <p>Only the <code>gamerom_file</code> argument is required.</p>
 <h2 id="args">Args</h2>
 <dl>
@@ -87,9 +87,9 @@ for a crude "bot", which interacts with the game.</p>
 </dl>
 <h2 id="kwargs">Kwargs</h2>
 <p>bootrom_file (str): Filepath to a boot-ROM to use. If unsure, specify <code>None</code>.
-profiling (bool): Profile the emulator and report opcode usage (internal use).
 disable_renderer (bool): Can be used to optimize performance, by internally disable rendering of the screen.
-color_palette (tuple): Specify the color palette to use for rendering.</p>
+color_palette (tuple): Specify the color palette to use for rendering.
+cgb_color_palette (list of tuple): Specify the color palette to use for rendering in CGB-mode for non-color games.</p>
 <p>Other keyword arguments may exist for plugins that are not listed here. They can be viewed with the
 <code>parser_arguments()</code> method in the pyboy.plugins.manager module, or by running pyboy &ndash;help in the terminal.</p></section>
 <details class="source">
@@ -102,9 +102,9 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
         gamerom_file,
         *,
         bootrom_file=None,
-        profiling=False,
         disable_renderer=False,
         sound=False,
+        sound_emulated=False,
         cgb=None,
         randomize=False,
         **kwargs
@@ -118,8 +118,8 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
         interfaces. All other parts of the emulator, are subject to change.
 
         A range of methods are exposed, which should allow for complete control of the emulator. Please open an issue on
-        GitHub, if other methods are needed for your projects. Take a look at `interface_example.py` or `tetris_bot.py`
-        for a crude &#34;bot&#34;, which interacts with the game.
+        GitHub, if other methods are needed for your projects. Take a look at the files in `examples/` for a crude
+        &#34;bots&#34;, which interact with the game.
 
         Only the `gamerom_file` argument is required.
 
@@ -128,9 +128,9 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
 
         Kwargs:
             bootrom_file (str): Filepath to a boot-ROM to use. If unsure, specify `None`.
-            profiling (bool): Profile the emulator and report opcode usage (internal use).
             disable_renderer (bool): Can be used to optimize performance, by internally disable rendering of the screen.
             color_palette (tuple): Specify the color palette to use for rendering.
+            cgb_color_palette (list of tuple): Specify the color palette to use for rendering in CGB-mode for non-color games.
 
         Other keyword arguments may exist for plugins that are not listed here. They can be viewed with the
         `parser_arguments()` method in the pyboy.plugins.manager module, or by running pyboy --help in the terminal.
@@ -150,11 +150,12 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
             gamerom_file,
             bootrom_file or kwargs.get(&#34;bootrom&#34;), # Our current way to provide cli arguments is broken
             kwargs[&#34;color_palette&#34;],
+            kwargs[&#34;cgb_color_palette&#34;],
             disable_renderer,
             sound,
+            sound_emulated,
             cgb,
             randomize=randomize,
-            profiling=profiling,
         )
 
         # Performance measures
@@ -192,27 +193,27 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
         if self.stopped:
             return True
 
-        t_start = time.perf_counter() # Change to _ns when PyPy supports it
+        t_start = time.perf_counter_ns()
         self._handle_events(self.events)
-        t_pre = time.perf_counter()
+        t_pre = time.perf_counter_ns()
         if not self.paused:
             if self.mb.tick():
                 # breakpoint reached
                 self.plugin_manager.handle_breakpoint()
             else:
                 self.frame_count += 1
-        t_tick = time.perf_counter()
+        t_tick = time.perf_counter_ns()
         self._post_tick()
-        t_post = time.perf_counter()
+        t_post = time.perf_counter_ns()
 
-        secs = t_pre - t_start
-        self.avg_pre = 0.9 * self.avg_pre + 0.1*secs
+        nsecs = t_pre - t_start
+        self.avg_pre = 0.9 * self.avg_pre + (0.1*nsecs/1_000_000_000)
 
-        secs = t_tick - t_pre
-        self.avg_tick = 0.9 * self.avg_tick + 0.1*secs
+        nsecs = t_tick - t_pre
+        self.avg_tick = 0.9 * self.avg_tick + (0.1*nsecs/1_000_000_000)
 
-        secs = t_post - t_tick
-        self.avg_post = 0.9 * self.avg_post + 0.1*secs
+        nsecs = t_post - t_tick
+        self.avg_post = 0.9 * self.avg_post + (0.1*nsecs/1_000_000_000)
 
         return self.quitting
 
@@ -225,7 +226,7 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
             elif event == WindowEvent.RELEASE_SPEED_UP:
                 # Switch between unlimited and 1x real-time emulation speed
                 self.target_emulationspeed = int(bool(self.target_emulationspeed) ^ True)
-                logger.info(&#34;Speed limit: %s&#34; % self.target_emulationspeed)
+                logger.debug(&#34;Speed limit: %s&#34; % self.target_emulationspeed)
             elif event == WindowEvent.STATE_SAVE:
                 with open(self.gamerom_file + &#34;.state&#34;, &#34;wb&#34;) as f:
                     self.mb.save_state(IntIOWrapper(f))
@@ -282,8 +283,7 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
     def _update_window_title(self):
         avg_emu = self.avg_pre + self.avg_tick + self.avg_post
         self.window_title = &#34;CPU/frame: %0.2f%%&#34; % ((self.avg_pre + self.avg_tick) / SPF * 100)
-        tolerance = 0.001 # 1ms. Avoid infinity and division by zero
-        self.window_title += &#34; Emulation: x%s&#34; % (round(SPF / avg_emu) if avg_emu &gt; tolerance else &#39;INF&#39;)
+        self.window_title += &#34; Emulation: x%s&#34; % (round(SPF / avg_emu) if avg_emu &gt; 0 else &#34;INF&#34;)
         if self.paused:
             self.window_title += &#34;[PAUSED]&#34;
         self.window_title += self.plugin_manager.window_title()
@@ -313,9 +313,6 @@ color_palette (tuple): Specify the color palette to use for rendering.</p>
             self.plugin_manager.stop()
             self.mb.stop(save)
             self.stopped = True
-
-    def _cpu_hitrate(self):
-        return self.mb.cpu.hitrate
 
     ###################################################################
     # Scripts and bot methods
@@ -606,27 +603,27 @@ otherwise with the <code><a title="pyboy.PyBoy.set_emulation_speed" href="#pyboy
     if self.stopped:
         return True
 
-    t_start = time.perf_counter() # Change to _ns when PyPy supports it
+    t_start = time.perf_counter_ns()
     self._handle_events(self.events)
-    t_pre = time.perf_counter()
+    t_pre = time.perf_counter_ns()
     if not self.paused:
         if self.mb.tick():
             # breakpoint reached
             self.plugin_manager.handle_breakpoint()
         else:
             self.frame_count += 1
-    t_tick = time.perf_counter()
+    t_tick = time.perf_counter_ns()
     self._post_tick()
-    t_post = time.perf_counter()
+    t_post = time.perf_counter_ns()
 
-    secs = t_pre - t_start
-    self.avg_pre = 0.9 * self.avg_pre + 0.1*secs
+    nsecs = t_pre - t_start
+    self.avg_pre = 0.9 * self.avg_pre + (0.1*nsecs/1_000_000_000)
 
-    secs = t_tick - t_pre
-    self.avg_tick = 0.9 * self.avg_tick + 0.1*secs
+    nsecs = t_tick - t_pre
+    self.avg_tick = 0.9 * self.avg_tick + (0.1*nsecs/1_000_000_000)
 
-    secs = t_post - t_tick
-    self.avg_post = 0.9 * self.avg_post + 0.1*secs
+    nsecs = t_post - t_tick
+    self.avg_post = 0.9 * self.avg_post + (0.1*nsecs/1_000_000_000)
 
     return self.quitting</code></pre>
 </details>
@@ -1550,7 +1547,7 @@ have been truncated to 11 characters.</p>
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.10.0</a>.</p>
 </footer>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
 <script>hljs.initHighlightingOnLoad()</script>

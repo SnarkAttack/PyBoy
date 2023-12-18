@@ -28,13 +28,30 @@ codecov: clean
 
 build:
 	@echo "Building..."
-	sed -i.bak -E 's/pyboy_version = .+$$/pyboy_version = "${PYBOY_VERSION}"/g' setup.py
-	rm setup.py.bak
-	CFLAGS=$(CFLAGS) ${PY} setup.py build_ext --inplace
+	CFLAGS=$(CFLAGS) ${PY} setup.py build_ext -j $(shell getconf _NPROCESSORS_ONLN) --inplace
 
 clean:
 	@echo "Cleaning..."
-	CFLAGS=$(CFLAGS) ${PY} setup.py clean --inplace
+	rm -rf PyBoy.egg-info
+	rm -rf build
+	rm -rf dist
+	find pyboy/ -type f -name "*.pyo" -delete
+	find pyboy/ -type f -name "*.pyc" -delete
+	find pyboy/ -type f -name "*.pyd" -delete
+	find pyboy/ -type f -name "*.so" -delete
+	find pyboy/ -type f -name "*.c" -delete
+	find pyboy/ -type f -name "*.h" -delete
+	find pyboy/ -type f -name "*.dll" -delete
+	find pyboy/ -type f -name "*.lib" -delete
+	find pyboy/ -type f -name "*.exp" -delete
+	find pyboy/ -type f -name "*.html" -delete
+	find pyboy/ -type d -name "__pycache__" -delete
+
+clean_tests:
+	${SHELL} 'rm -rf blargg'
+	${SHELL} 'rm -rf SameSuite'
+	${SHELL} 'rm -rf mooneye'
+	${SHELL} 'rm -rf "GB Tests"'
 
 install: build
 	${PY} -m pip install .
@@ -46,10 +63,10 @@ test: export DEBUG=1
 test: clean build test_cython test_pypy
 
 test_cython:
-	${PY} setup.py test
+	${PY} -m pytest tests/ -n4 -v
 
 test_pypy:
-	${PYPY} setup.py test
+	${PYPY} -m pytest tests/ -n4 -v
 
 test_all: test
 

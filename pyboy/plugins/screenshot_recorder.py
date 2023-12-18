@@ -3,15 +3,15 @@
 # GitHub: https://github.com/Baekalfen/PyBoy
 #
 
-import logging
 import os
 import time
 
-from pyboy.logger import logger
+import pyboy
+from pyboy import utils
 from pyboy.plugins.base_plugin import PyBoyPlugin
 from pyboy.utils import WindowEvent
 
-logger = logging.getLogger(__name__)
+logger = pyboy.logging.get_logger(__name__)
 
 try:
     from PIL import Image
@@ -44,6 +44,6 @@ class ScreenshotRecorder(PyBoyPlugin):
     @classmethod
     def enabled(cls, pyboy, pyboy_argv):
         if Image is None:
-            logger.warning(f"{__name__}: Missing dependency \"Pillow\". Screenshots disabled")
+            logger.warning("%s: Missing dependency \"Pillow\". Screenshots disabled", __name__)
             return False
         return True

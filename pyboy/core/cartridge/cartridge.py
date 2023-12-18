@@ -3,8 +3,10 @@
 # GitHub: https://github.com/Baekalfen/PyBoy
 #
 
-import logging
 from array import array
+
+import pyboy
+from pyboy import utils
 
 from .base_mbc import ROMOnly
 from .mbc1 import MBC1
@@ -12,13 +14,7 @@ from .mbc2 import MBC2
 from .mbc3 import MBC3
 from .mbc5 import MBC5
 
-logger = logging.getLogger(__name__)
-
-try:
-    from cython import compiled
-    cythonmode = compiled
-except ImportError:
-    cythonmode = False
+logger = pyboy.logging.get_logger(__name__)
 
 
 def load_cartridge(filename):
@@ -27,18 +23,17 @@ def load_cartridge(filename):
         raise Exception("Cartridge header checksum mismatch!")
 
     # WARN: The following table doesn't work for MBC2! See Pan Docs
-    external_ram_count = int(EXTERNAL_RAM_TABLE[rombanks[0][0x0149]])
+    external_ram_count = int(EXTERNAL_RAM_TABLE[rombanks[0, 0x0149]])
 
-    carttype = rombanks[0][0x0147]
+    carttype = rombanks[0, 0x0147]
     cartinfo = CARTRIDGE_TABLE.get(carttype, None)
     if cartinfo is None:
         raise Exception("Catridge type invalid: %s" % carttype)
 
-    cartdata = (
-        carttype, cartinfo[0].__name__, ", ".join([x for x, y in zip(["SRAM", "Battery", "RTC"], cartinfo[1:]) if y])
-    )
-    logger.info("Cartridge type: 0x%0.2x - %s, %s" % cartdata)
-    logger.info("Cartridge size: %d ROM banks of 16KB, %s RAM banks of 8KB" % (len(rombanks), external_ram_count))
+    cart_line = ", ".join([x for x, y in zip(["SRAM", "Battery", "RTC"], cartinfo[1:]) if y])
+    cart_name = cartinfo[0].__name__
+    logger.debug("Cartridge type: 0x%0.2x - %s, %s", carttype, cart_name, cart_line)
+    logger.debug("Cartridge size: %d ROM banks of 16KB, %s RAM banks of 8KB", len(rombanks), external_ram_count)
     cartmeta = CARTRIDGE_TABLE[carttype]
 
     return cartmeta[0](filename, rombanks, external_ram_count, carttype, *cartmeta[1:])
@@ -47,16 +42,16 @@ def load_cartridge(filename):
 def validate_checksum(rombanks):
     x = 0
     for m in range(0x134, 0x14D):
-        x = x - rombanks[0][m] - 1
+        x = x - rombanks[0, m] - 1
         x &= 0xff
-    return rombanks[0][0x14D] == x
+    return rombanks[0, 0x14D] == x
 
 
 def load_romfile(filename):
     with open(filename, "rb") as romfile:
         romdata = array("B", romfile.read())
 
-    logger.debug(f"Loading ROM file: {len(romdata)} bytes")
+    logger.debug("Loading ROM file: %d bytes", len(romdata))
     if len(romdata) == 0:
         logger.error("ROM file is empty!")
         raise Exception("Empty ROM file")
@@ -66,11 +61,7 @@ def load_romfile(filename):
         logger.error("Unexpected ROM file length")
         raise Exception("Bad ROM file size")
 
-    if cythonmode:
-        return memoryview(romdata).cast("B", shape=(len(romdata) // banksize, banksize))
-    else:
-        v = memoryview(romdata)
-        return [v[i:i + banksize] for i in range(0, len(romdata), banksize)]
+    return memoryview(romdata).cast("B", shape=(len(romdata) // banksize, banksize))
 
 
 # yapf: disable

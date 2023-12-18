@@ -3,8 +3,7 @@
 # GitHub: https://github.com/Baekalfen/PyBoy
 #
 
-import logging
-
+from pyboy import utils
 from pyboy.core.opcodes import CPU_COMMANDS
 from pyboy.utils import STATE_VERSION
 
@@ -12,7 +11,9 @@ from . import bootrom, cartridge, cpu, interaction, lcd, ram, sound, timer
 
 INTR_VBLANK, INTR_LCDC, INTR_TIMER, INTR_SERIAL, INTR_HIGHTOLOW = [1 << x for x in range(5)]
 
-logger = logging.getLogger(__name__)
+import pyboy
+
+logger = pyboy.logging.get_logger(__name__)
 
 
 class Motherboard:
@@ -21,28 +22,26 @@ class Motherboard:
         gamerom_file,
         bootrom_file,
         color_palette,
+        cgb_color_palette,
         disable_renderer,
         sound_enabled,
+        sound_emulated,
         cgb,
         randomize=False,
-        profiling=False,
     ):
         if bootrom_file is not None:
             logger.info("Boot-ROM file provided")
 
-        if profiling:
-            logger.info("Profiling enabled")
-
         self.cartridge = cartridge.load_cartridge(gamerom_file)
         if cgb is None:
             cgb = self.cartridge.cgb
-            logger.info(f'Cartridge type auto-detected to {"CGB" if cgb else "DMG"}')
+            logger.debug("Cartridge type auto-detected to %s", ("CGB" if cgb else "DMG"))
 
         self.timer = timer.Timer()
         self.interaction = interaction.Interaction()
         self.bootrom = bootrom.BootROM(bootrom_file, cgb)
         self.ram = ram.RAM(cgb, randomize=randomize)
-        self.cpu = cpu.CPU(self, profiling)
+        self.cpu = cpu.CPU(self)
 
         if cgb:
             self.lcd = lcd.CGBLCD(
@@ -50,6 +49,7 @@ class Motherboard:
                 self.cartridge.cgb,
                 disable_renderer,
                 color_palette,
+                cgb_color_palette,
                 randomize=randomize,
             )
         else:
@@ -58,9 +58,13 @@ class Motherboard:
                 self.cartridge.cgb,
                 disable_renderer,
                 color_palette,
+                cgb_color_palette,
                 randomize=randomize,
             )
-        self.sound = sound.Sound(sound_enabled)
+
+        # QUIRK: Force emulation of sound (muted)
+        sound_emulated |= self.cartridge.gamename == "ZELDA DIN"
+        self.sound = sound.Sound(sound_enabled, sound_emulated)
 
         self.key1 = 0
         self.double_speed = False
@@ -69,10 +73,9 @@ class Motherboard:
         if self.cgb:
             self.hdma = HDMA()
 
-        # self.disable_renderer = disable_renderer
-
         self.bootrom_enabled = True
-        self.serialbuffer = ""
+        self.serialbuffer = [0] * 1024
+        self.serialbuffer_count = 0
 
         self.breakpoints_enabled = False # breakpoints_enabled
         self.breakpoints_list = [] #[(0, 0x150), (0, 0x0040), (0, 0x0048), (0, 0x0050)]
@@ -95,8 +98,8 @@ class Motherboard:
             self.breakpoints_enabled = False
 
     def getserial(self):
-        b = self.serialbuffer
-        self.serialbuffer = ""
+        b = "".join([chr(x) for x in self.serialbuffer[:self.serialbuffer_count]])
+        self.serialbuffer_count = 0
         return b
 
     def buttonevent(self, key):
@@ -132,11 +135,11 @@ class Motherboard:
         logger.debug("Loading state...")
         state_version = f.read()
         if state_version >= 2:
-            logger.debug(f"State version: {state_version}")
+            logger.debug("State version: %d", state_version)
             # From version 2 and above, this is the version number
             self.bootrom_enabled = f.read()
         else:
-            logger.debug(f"State version: 0-1")
+            logger.debug("State version: 0-1")
             # HACK: The byte wasn't a state version, but the bootrom flag
             self.bootrom_enabled = state_version
         if state_version >= 8:
@@ -144,7 +147,7 @@ class Motherboard:
             self.double_speed = f.read()
             _cgb = f.read()
             if self.cgb != _cgb:
-                logger.critical(f"Loading state which is not CGB, but PyBoy is loaded in CGB mode!")
+                logger.critical("Loading state which is not CGB, but PyBoy is loaded in CGB mode!")
                 return
             self.cgb = _cgb
             if self.cgb:
@@ -187,8 +190,13 @@ class Motherboard:
                 return True
         return False
 
+    def processing_frame(self):
+        b = (not self.lcd.frame_done)
+        self.lcd.frame_done = False # Clear vblank flag for next iteration
+        return b
+
     def tick(self):
-        while self.lcd.processing_frame():
+        while self.processing_frame():
             if self.cgb and self.hdma.transfer_active and self.lcd._STAT._mode & 0b11 == 0:
                 cycles = self.hdma.tick(self)
             else:
@@ -214,17 +222,15 @@ class Motherboard:
                     mode0_cycles
                 )
 
-                # Profiling
-                self.cpu.add_opcode_hit(0x76, cycles // 4)
-
             #TODO: Support General Purpose DMA
             # https://gbdev.io/pandocs/CGB_Registers.html#bit-7--0---general-purpose-dma
 
             # TODO: Unify interface
+            sclock = self.sound.clock
             if self.cgb and self.double_speed:
-                self.sound.clock += cycles // 2
+                self.sound.clock = sclock + cycles//2
             else:
-                self.sound.clock += cycles
+                self.sound.clock = sclock + cycles
 
             if self.timer.tick(cycles):
                 self.cpu.set_interruptflag(INTR_TIMER)
@@ -236,6 +242,7 @@ class Motherboard:
             # Escape halt. This happens when pressing 'return' in the debugger. It will make us skip breaking on halt
             # for every cycle, but do break on the next instruction -- even in an interrupt.
             escape_halt = self.cpu.halted and self.breakpoint_latch == 1
+            # TODO: Replace with GDB Stub
             if self.breakpoints_enabled and (not escape_halt) and self.breakpoint_reached():
                 return True
 
@@ -333,16 +340,16 @@ class Motherboard:
             elif self.cgb and i == 0xFF6B:
                 return self.lcd.ocpd.get()
             elif self.cgb and i == 0xFF51:
-                logger.error("HDMA1 is not readable")
+                # logger.debug("HDMA1 is not readable")
                 return 0x00 # Not readable
             elif self.cgb and i == 0xFF52:
-                logger.error("HDMA2 is not readable")
+                # logger.debug("HDMA2 is not readable")
                 return 0x00 # Not readable
             elif self.cgb and i == 0xFF53:
-                logger.error("HDMA3 is not readable")
+                # logger.debug("HDMA3 is not readable")
                 return 0x00 # Not readable
             elif self.cgb and i == 0xFF54:
-                logger.error("HDMA4 is not readable")
+                # logger.debug("HDMA4 is not readable")
                 return 0x00 # Not readable
             elif self.cgb and i == 0xFF55:
                 return self.hdma.hdma5 & 0xFF
@@ -351,12 +358,10 @@ class Motherboard:
             return self.ram.internal_ram1[i - 0xFF80]
         elif i == 0xFFFF: # Interrupt Enable Register
             return self.cpu.interrupts_enabled_register
-        else:
-            raise IndexError("Memory access violation. Tried to read: %s" % hex(i))
+        # else:
+        #     logger.critical("Memory access violation. Tried to read: %0.4x", i)
 
     def setitem(self, i, value):
-        assert 0 <= value < 0x100, "Memory write error! Can't write %s to %s" % (hex(value), hex(i))
-
         if 0x0000 <= i < 0x4000: # 16kB ROM bank #0
             # Doesn't change the data. This is for MBC commands
             self.cartridge.setitem(i, value)
@@ -369,13 +374,11 @@ class Motherboard:
                 if i < 0x9800: # Is within tile data -- not tile maps
                     # Mask out the byte of the tile
                     self.lcd.renderer.invalidate_tile(((i & 0xFFF0) - 0x8000) // 16, 0)
-                    # self.lcd.renderer.tiles_changed0.add(i & 0xFFF0)
             else:
                 self.lcd.VRAM1[i - 0x8000] = value
                 if i < 0x9800: # Is within tile data -- not tile maps
                     # Mask out the byte of the tile
                     self.lcd.renderer.invalidate_tile(((i & 0xFFF0) - 0x8000) // 16, 1)
-                    # self.lcd.renderer.tiles_changed1.add(i & 0xFFF0)
         elif 0xA000 <= i < 0xC000: # 8kB switchable RAM bank
             self.cartridge.setitem(i, value)
         elif 0xC000 <= i < 0xE000: # 8kB Internal RAM
@@ -398,7 +401,9 @@ class Motherboard:
             if i == 0xFF00:
                 self.ram.io_ports[i - 0xFF00] = self.interaction.pull(value)
             elif i == 0xFF01:
-                self.serialbuffer += chr(value)
+                self.serialbuffer[self.serialbuffer_count] = value
+                self.serialbuffer_count += 1
+                self.serialbuffer_count &= 0x3FF
                 self.ram.io_ports[i - 0xFF00] = value
             elif i == 0xFF04:
                 self.timer.reset()
@@ -446,7 +451,7 @@ class Motherboard:
                 self.ram.io_ports[i - 0xFF00] = value
         elif 0xFF4C <= i < 0xFF80: # Empty but unusable for I/O
             if self.bootrom_enabled and i == 0xFF50 and (value == 0x1 or value == 0x11):
-                logger.info("Bootrom disabled!")
+                logger.debug("Bootrom disabled!")
                 self.bootrom_enabled = False
             # CGB registers
             elif self.cgb and i == 0xFF4D:
@@ -454,8 +459,6 @@ class Motherboard:
             elif self.cgb and i == 0xFF4F:
                 self.lcd.vbk.set(value)
             elif self.cgb and i == 0xFF51:
-                # if 0x7F < value < 0xA0:
-                #     value = 0
                 self.hdma.hdma1 = value
             elif self.cgb and i == 0xFF52:
                 self.hdma.hdma2 = value # & 0xF0
@@ -483,8 +486,8 @@ class Motherboard:
             self.ram.internal_ram1[i - 0xFF80] = value
         elif i == 0xFFFF: # Interrupt Enable Register
             self.cpu.interrupts_enabled_register = value
-        else:
-            raise Exception("Memory access violation. Tried to write: %s" % hex(i))
+        # else:
+        #     logger.critical("Memory access violation. Tried to write: 0x%0.2x to 0x%0.4x", value, i)
 
     def transfer_DMA(self, src):
         # http://problemkaputt.de/pandocs.htm#lcdoamdmatransfers
@@ -513,7 +516,6 @@ class HDMA:
         f.write(self.hdma3)
         f.write(self.hdma4)
         f.write(self.hdma5)
-        f.write(self._hdma5)
         f.write(self.transfer_active)
         f.write_16bit(self.curr_src)
         f.write_16bit(self.curr_dst)
@@ -524,7 +526,9 @@ class HDMA:
         self.hdma3 = f.read()
         self.hdma4 = f.read()
         self.hdma5 = f.read()
-        self._hdma5 = f.read()
+        if STATE_VERSION <= 8:
+            # NOTE: Deprecated read to self._hdma5
+            f.read()
         self.transfer_active = f.read()
         self.curr_src = f.read_16bit()
         self.curr_dst = f.read_16bit()
@@ -550,8 +554,6 @@ class HDMA:
                 # General purpose DMA transfer
                 for i in range(bytes_to_transfer):
                     mb.setitem((dst + i) & 0xFFFF, mb.getitem((src + i) & 0xFFFF))
-                # self.curr_dst += bytes_to_transfer
-                # self.curr_src += bytes_to_transfer
 
                 # Number of blocks of 16-bytes transfered. Set 7th bit for "completed".
                 self.hdma5 = 0xFF #(value & 0x7F) | 0x80 #0xFF
@@ -566,7 +568,6 @@ class HDMA:
                 # Hblank DMA transfer
                 # set 7th bit to 0
                 self.hdma5 = self.hdma5 & 0x7F
-                # self._hdma5 = (value & 0x7F)
                 self.transfer_active = True
                 self.curr_dst = dst
                 self.curr_src = src
@@ -596,7 +597,6 @@ class HDMA:
 
         if self.hdma5 == 0:
             self.transfer_active = False
-            # self.hdma5 = self._hdma5 | 0x80
             self.hdma5 = 0xFF
         else:
             self.hdma5 -= 1
