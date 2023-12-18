@@ -59,6 +59,10 @@ class PyBoyPlugin:
     @classmethod
     def enabled(cls, pyboy, pyboy_argv):
         return True
+    
+    @classmethod
+    def register(cls, pyboy):
+        pyboy.register_plugin(cls)
 
 
 class PyBoyWindowPlugin(PyBoyPlugin):

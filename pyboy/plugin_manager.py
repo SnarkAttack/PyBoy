@@ -100,6 +100,26 @@ class PluginManager:
 
     def get_plugin(self, name):
         return self.plugin_mapping[name]
+    
+    def register_plugin(self, plugin_class):
+        # Assuming that register plugion is only called when we
+        # want plugin to be enabled (if possible)
+        if self.plugin_mapping.get(plugin_class.__name__) is None:
+            if plugin_class.enabled(self.pyboy, {"game_wrapper": True}):
+
+                plugin = plugin_class(self.pyboy, self.pyboy.mb, self.pyboy.argv)
+
+                if issubclass(plugin_class, PyBoyGameWrapper):
+                    self.enabled_gamewrappers.append(plugin)
+                elif issubclass(plugin_class, PyBoyWindowPlugin):
+                    self.enabled_window_plugins.append(plugin)
+                else:
+                    self.enabled_plugins.append(plugin)
+                self.plugin_mapping[plugin.__class__.__name__] = plugin
+            else:
+                logger.info(f"Plugin {plugin_class.__name__} is not enabled")
+        else:
+            logger.info(f"Plugin {plugin_class.__name__} is already loaded")
 
     def gamewrapper(self):
         if self.enabled_gamewrappers:

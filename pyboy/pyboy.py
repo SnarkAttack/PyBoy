@@ -111,6 +111,7 @@ class PyBoy:
 
         self.plugin_manager = PluginManager(self, self.mb, kwargs)
         self.initialized = True
+        self.argv = kwargs
 
     def tick(self):
         """
@@ -510,3 +511,6 @@ class PyBoy:
 
     def _is_cpu_stuck(self):
         return self.mb.cpu.is_stuck
+    
+    def register_plugin(self, plugin_class):
+        self.plugin_manager.register_plugin(plugin_class)
