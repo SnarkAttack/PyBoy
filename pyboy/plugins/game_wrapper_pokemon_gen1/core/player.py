@@ -54,7 +54,7 @@ class Player(MemoryObject):
 
     @staticmethod
     def load_player(mem_manager, fields_to_track=None):
-        player = Player(mem_manager, fields_to_track)
+        player = Player(fields_to_track)
         player.load_from_memory(mem_manager)
         return player
     

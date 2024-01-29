@@ -12,7 +12,7 @@ from pyboy.plugins.base_plugin cimport PyBoyPlugin, PyBoyWindowPlugin
 from pyboy.plugins.debug cimport Debug
 from pyboy.plugins.disable_input cimport DisableInput
 from pyboy.plugins.game_wrapper_kirby_dream_land cimport GameWrapperKirbyDreamLand
-from pyboy.plugins.game_wrapper_pokemon_gen1 cimport GameWrapperPokemonGen1
+from pyboy.plugins.game_wrapper_pokemon_gen1.game_wrapper_pokemon_gen1 cimport GameWrapperPokemonGen1
 from pyboy.plugins.game_wrapper_super_mario_land cimport GameWrapperSuperMarioLand
 from pyboy.plugins.game_wrapper_tetris cimport GameWrapperTetris
 from pyboy.plugins.record_replay cimport RecordReplay

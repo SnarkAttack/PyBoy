@@ -48,7 +48,7 @@ class MemoryManager():
             return index + 197
         return index + ASCII_DELTA
     
-    def get_
+    #def get_
 
     def _read_byte(self, addr):
         return self.pyboy.get_memory_value(addr)
